@@ -1,0 +1,15 @@
+# Code
+
+1. Encoder-Decoder Pipeline for arbitrary Diffusion
+    a. Encode input ERP iamge (w/ circular padding)
+    b. Add gaussian noises to encoded latent
+    c. Denoise with arbitary Diffusion models
+    d. Decode denoised latent
+
+2. Sphere INR code
+
+3. class StitchDiffusion(nn.Modue) >> after 2 & 3
+
+4. Prepare Dataset & Dataloader code
+
+5. Overall Trainer code

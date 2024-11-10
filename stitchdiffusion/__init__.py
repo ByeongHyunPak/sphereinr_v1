@@ -1,0 +1,1 @@
+from StitchDiffusionPipeline import STITCHDIFFUSION_ARGS
