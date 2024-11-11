@@ -92,7 +92,7 @@ class basePipeline(nn.Module):
     def forward_train(self, batch, **kwargs):
 
         # TODO encode traing images
-        latents = self.encode_latent(batch['images'])
+        latents = self.encode_latent(batch['inp'])
         b, c, h, w = latents.shape
 
         # TODO add_noise
