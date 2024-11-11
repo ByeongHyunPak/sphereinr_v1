@@ -1,6 +1,6 @@
 .DS_Store
-*.safetensors
-*.pt
+stitchdiffusion/**/*.safetensors
+stitchdiffusion/**/*.pt
 *.txt
 
 # Byte-compiled / optimized / DLL files
@@ -119,8 +119,8 @@ data
 work_dirs/
 mmseg/.mim
 
-# Pytorch
-*.pth
+# # Pytorch
+# *.pth
 
 euler_log.txt
 jobs/
