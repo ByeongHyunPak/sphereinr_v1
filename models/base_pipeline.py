@@ -89,7 +89,7 @@ class basePipeline(nn.Module):
         image = self.vae.decode(z.to(self.vae.dtype)).sample
         return image.to(self.dtype)
     
-    def forward_train(self, batch, **kwargs):
+    def forward_train(self, batch, has_opt=None, **kwargs):
 
         # TODO encode traing images
         latents = self.encode_latent(batch['inp'])
@@ -120,7 +120,7 @@ class basePipeline(nn.Module):
 
         pred = batch['pred']
         target = batch['target']
-        use_gan_loss = kwargs.get('use_gan', False)
+        use_gan = kwargs.get('use_gan', False)
         loss_cfg = self.loss_cfg
         
         # L1 Loss
@@ -136,7 +136,7 @@ class basePipeline(nn.Module):
         ret['loss'] = ret['loss'] + perc_loss_w * perc_loss
 
         # GAN Loss
-        if use_gan_loss:
+        if use_gan:
 
             if not self.disc_cond_scale:
                 logits_fake = self.disc(pred)
