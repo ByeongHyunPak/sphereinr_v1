@@ -1,9 +1,13 @@
 import numpy as np
+
 import torch
 import torch.nn as nn
+
 from einops import rearrange
 
+from models import register
 
+@register('vector-quantizer')
 class VectorQuantizer(nn.Module):
     """
     Improved version over VectorQuantizer, can be used as a drop-in replacement. Mostly
