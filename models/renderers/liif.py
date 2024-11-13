@@ -13,7 +13,6 @@ from models import register
 class liif(nn.Module):
 
     def __init__(self, imnet_spec=None):
-
         self.imnet = models.make(imnet_spec)
 
     def forward(self, feat, coord, cell=None):

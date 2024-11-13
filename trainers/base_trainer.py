@@ -1,28 +1,25 @@
 import os
 import time
 import copy
-import yaml
-import wandb
 import random
-
-import numpy as np
-
-from tqdm import tqdm
-from omegaconf import OmegaConf
 from functools import partial
 
+import yaml
+import wandb
+import numpy as np
 import torch
 import torch.distributed as dist
-
+from omegaconf import OmegaConf
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel
 
-import utils
-import models
 import datasets
-
+import models
+import utils
 from .trainers import register
+
 
 def worker_init_fn_(worker_id, num_workers, rank, world_size, seed):
     glo_worker_id = num_workers * rank + worker_id
@@ -30,6 +27,7 @@ def worker_init_fn_(worker_id, num_workers, rank, world_size, seed):
     random.seed(worker_seed)
     np.random.seed(worker_seed)
     torch.manual_seed(worker_seed)
+
 
 @register('base_trainer')
 class BaseTrainer():
@@ -41,8 +39,8 @@ class BaseTrainer():
         self.cfg_dict = OmegaConf.to_container(cfg, resolve=True)
         env = cfg._env
 
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
+        # torch.backends.cuda.matmul.allow_tf32 = True
+        # torch.backends.cudnn.allow_tf32 = True
 
         force_replace = False
         if cfg._env.resume_mode == 'resume':
@@ -62,12 +60,40 @@ class BaseTrainer():
             with open(os.path.join(env.save_dir, 'cfg.yaml'), 'w') as f:
                 yaml.dump(self.cfg_dict, f, sort_keys=False)
             self.log = logger.info
+
             self.enable_tb = True
             self.writer = writer
 
+            if env.wandb:
+                self.enable_wandb = True
+                os.environ['WANDB_NAME'] = env.exp_name
+                os.environ['WANDB_DIR'] = env.save_dir
+                with open('wandb.yaml', 'r') as f:
+                    wandb_cfg = yaml.load(f, Loader=yaml.FullLoader)
+                os.environ['WANDB_API_KEY'] = wandb_cfg['api_key']
+                wandb.init(project=wandb_cfg['project'], entity=wandb_cfg['entity'], config=self.cfg_dict, resume=True)
+            else:
+                self.enable_wandb = False
         else:
             self.log = lambda *args, **kwargs: None
             self.enable_tb = False
+            self.enable_wandb = False
+
+        # Setup distributed
+        self.world_size = int(os.environ.get('WORLD_SIZE', '1'))
+        self.distributed = (self.world_size > 1)
+
+        if self.distributed:
+            dist.init_process_group(backend='nccl')
+            dist.barrier()
+            self.log(f'Distributed training enabled. World size: {self.world_size}.')
+
+        torch.cuda.set_device(self.rank)
+        self.device = torch.device('cuda', torch.cuda.current_device())
+
+        dist.barrier()
+        
+        self.log(f'Environment setup done.')
 
     def seed_everything(self, seed, rank_shift=True):
         if rank_shift:
@@ -75,7 +101,51 @@ class BaseTrainer():
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-    
+
+    def run(self):
+        if self.cfg.random_seed is not None:
+            self.seed_everything(self.cfg.random_seed, rank_shift=True)
+
+        self.make_datasets()
+
+        if self.cfg.get('eval_only', False):
+            model_spec = self.cfg.get('eval_model')
+            if model_spec is not None:
+                model_spec = torch.load(model_spec, map_location='cpu')['model']
+            self.make_model(model_spec); model_spec = None
+            self.iter = 0
+            self.evaluate()
+            self.visualize()
+        else:
+            resume_file = os.path.join(self.cfg._env.save_dir, 'last-model.pth')
+            if os.path.isfile(resume_file):
+                ckpt = torch.load(resume_file, map_location='cpu')
+
+            if os.path.isfile(resume_file):
+                model_spec = copy.deepcopy(OmegaConf.to_container(self.cfg.model, resolve=True))
+                model_spec['sd'] = ckpt['model']['sd']
+                self.make_model(model_spec)
+                model_spec = None
+                self.log(f'Resumed model from checkpoint {resume_file}.')
+            else:
+                self.make_model()
+
+            self.make_optimizers()
+            if os.path.isfile(resume_file):
+                opt_dict = ckpt['optimizers']
+                for k, v in opt_dict.items():
+                    self.optimizers[k].load_state_dict(v['sd'])
+                opt_dict = None
+                self.log(f'Resumed optimizers from checkpoint {resume_file}.')
+
+            ckpt = None
+            self.run_training()
+
+        if self.enable_tb:
+            self.writer.close()
+        if self.enable_wandb:
+            wandb.finish()
+
     def make_distributed_loader(self, dataset, batch_size, drop_last, shuffle, num_workers):
         num_workers //= self.world_size
         if self.cfg.random_seed is not None:
@@ -131,49 +201,6 @@ class BaseTrainer():
 
     def make_optimizers(self):
         self.optimizers = {'all': utils.make_optimizer(self.model.parameters(), self.cfg.optimizers)}
-    
-    def run(self):
-        if self.cfg.random_seed is not None:
-            self.seed_everything(self.cfg.random_seed, rank_shift=True)
-        
-        self.make_datasets()
-
-        if self.cfg.get('eval_only', False):
-            model_spec = self.cfg.get('eval_model')
-            if model_spec is not None:
-                model_spec = torch.load(model_spec, map_location='cpu')['model']
-            self.make_model(model_spec); model_spec = None
-            self.iter = 0
-            self.evaluate()
-            self.visualize()
-        
-        else:
-            resume_file = os.path.join(self.cfg._env.save_dir, 'last-model.pth')
-            if os.path.isfile(resume_file):
-                ckpt = torch.load(resume_file, map_location='cpu')
-
-            if os.path.isfile(resume_file):
-                model_spec = copy.deepcopy(OmegaConf.to_container(self.cfg.model, resolve=True))
-                model_spec['sd'] = ckpt['model']['sd']
-                self.make_model(model_spec)
-                model_spec = None
-                self.log(f'Resumed model from checkpoint {resume_file}.')
-            else:
-                self.make_model()
-
-            self.make_optimizers()
-            if os.path.isfile(resume_file):
-                opt_dict = ckpt['optimizers']
-                for k, v in opt_dict.items():
-                    self.optimizers[k].load_state_dict(v['sd'])
-                opt_dict = None
-                self.log(f'Resumed optimizers from checkpoint {resume_file}.')
-
-            ckpt = None
-            self.run_training()
-
-        if self.enable_tb:
-            self.writer.close()
 
     def run_training(self):
         cfg = self.cfg

@@ -1,14 +1,11 @@
-import copy
-
-import numpy as np
+import os
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributed as dist
 
-from einops import rearrange
-
-from transformers import CLIPTextModel, CLIPTokenizer, logging
+from transformers import CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, UNet2DConditionModel, DDIMScheduler
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.loaders import AttnProcsLayers
@@ -16,7 +13,6 @@ from diffusers.loaders import AttnProcsLayers
 import models
 from models import register
 from models.vqgan.lpips import lpips
-from models.vqgan.quantizer import VectorQuantizer
 from models.vqgan.discriminator import make_discriminator
 
 
@@ -24,28 +20,35 @@ from models.vqgan.discriminator import make_discriminator
 class basePipeline(nn.Module):
 
     def __init__(
-            self, 
+            self,
+            vae,
             disc=None,
-            denoiser=None,
             renderer=None,
+            diffuser=None,
             loss_cfg = dict(),
             **kwargs
         ):
 
-        self.vae = ... # TODO build custom AutoencoderKL's Decoder
-        self.renderer = models.make(renderer) if renderer else None
+        self.vae = CustomAutoencoderKL.from_pretrained(vae)
 
         input_nc = 3 if not disc.disc_cond_scale else 4
         self.disc_cond_scale = disc.disc_cond_scale
         self.disc = make_discriminator(**disc, input_nc=input_nc) if disc else None
 
-        if denoiser is not None:
-            self.unet = ...
-            self.tokenizer = ...
-            self.text_encoder = ...
-            self.scheduler = ...
+        self.renderer = models.make(renderer) if renderer else None
+
+        if diffuser is not None: # TODO
+            self.text_encoder = CLIPTextModel.from_pretrained(diffuser.text_encoder)
+            self.tokenizer = CLIPTokenizer.from_pretrained(diffuser.tokenizer)
+            self.scheduler = DDIMScheduler.from_pretrained(diffuser.scheduler)
+            self.unet = UNet2DConditionModel.from_pretrained(diffuser.unet)
+            if diffuser.get('lora', False):
+                self.add_lora(self.unet)
 
         self.loss_cfg = loss_cfg
+    
+    def add_lora(self, unet):
+        pass # TODO
 
     def get_gd_from_opt(self, opt):
         if opt is None:
@@ -59,26 +62,13 @@ class basePipeline(nn.Module):
             return self.vae.parameters()
         elif name == 'renderer':
             return self.renderer.parameters()
+        # TODO Fill with components
 
     def encode_latents(self, x):
         x = x.to(self.vae.dtype)
         z = self.vae.encode(x).latent_dist.sample()
         z = z * self.vae.config.scaling_factor
         return z.to(self.dtype)
-    
-    def rotate_latent(self, z, degree=None):
-        if degree is None:
-            degree = self.rot_diff
-        if degree % 360 == 0:
-            return z
-        return torch.roll(z, degree // 360 * z.shape[-1], dims=-1)
-
-    def decode_latent(self, z):
-        z = z / self.vae.config.scaling_factor
-        image = self.vae.decode(z.to(self.vae.dtype)).sample
-        return image.to(self.dtype)
-    
-    def forward_train(self, batch, has_opt=None, **kwargs):
 
     def decode_latents(self, z):
         z = 1 / self.vae.config.scaling_factor * z
@@ -86,70 +76,120 @@ class basePipeline(nn.Module):
         feat = self.vae.decode(z).sample
         return feat.to(self.dtype)
 
-    def forward_train(self, batch, **kwargs):
-
-        # encode training images
+    def rotate_latents(self, z, degree=None):
+        if degree is None:
+            degree = self.rot_diff
+        if degree % 360 == 0:
+            return z
+        return torch.roll(z, degree // 360 * z.shape[-1], dims=-1)
+    
+    def forward_autoencoder(self, batch):
         latents = self.encode_latents(batch['inp'])
-
-        # decode latents
         feats = self.decode_latents(latents)
+        return feats
 
-        # render query pixels
-        if self.renderer:
-            preds = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
-            batch['pred'] = preds
-        else:
-            batch['pred'] = feats
+    def forward_train(self, batch, mode, **kwargs):
 
-        # compute losses
-        ret = self.compute_loss(batch, kwargs)
+        if mode == "loss":
+            feats = self.forward_autoencoder(batch)
+            batch['pred'] = self.renderer(feats, batch['coord'], batch['cell'])
+            ret = self.compute_loss(batch, mode="loss", **kwargs)
+            # compute training psnr
+            mse = ((batch['gt'] - batch['pred']) / 2).pow(2).mean(dim=[-2, -1])
+            ret['psnr'] = (-10 * torch.log10(mse)).mean().item()
 
-        # compute training psnr
-        mse = ((batch['gt'] - batch['pred']) / 2).pow(2).mean(dim=[-2, -1])
-        ret['psnr'] = (-10 * torch.log10(mse)).mean().item()
+        elif mode == "disc_loss":
+            with torch.no_grad():
+                feats = self.forward_autoencoder(batch)
+                batch['pred'] = self.renderer(feats, batch['coord'], batch['cell'])
+            ret = self.compute_loss(batch, mode="disc_loss", **kwargs)
 
         return ret
 
-    def compute_loss(self, batch, **kwargs):
+    def compute_loss(self, batch, mode, **kwargs):
 
-        ret = {'loss': torch.tensor(0, dtype=torch.float32, device=batch['inp'].device)}
+        if mode == "loss":
+            ret = {'loss': torch.tensor(0, dtype=torch.float32, device=batch['inp'].device)}
+            
+            # L1 Loss
+            l1_loss = torch.abs(batch['pred'] - batch['target']).mean()
+            l1_loss_w = self.loss_cfg.get('l1_loss', 1)
+            ret['l1_loss'] = l1_loss.item()
+            ret['loss'] = ret['loss'] + l1_loss_w * l1_loss
+            
+            # Perception Loss
+            perc_loss = lpips(batch['pred'], batch['target']).mean()
+            perc_loss_w = self.loss_cfg.get('perc_loss', 1)
+            ret['perc_loss'] = perc_loss.item()
+            ret['loss'] = ret['loss'] + perc_loss_w * perc_loss
 
-        pred = batch['pred']
-        target = batch['target']
-        use_gan_loss = kwargs.get('use_gan', False)
-        loss_cfg = self.loss_cfg
+            # GAN Loss
+            if kwargs.get('use_gan', False):
+                if not self.disc_cond_scale:
+                    logits_fake = self.disc(batch['pred'])
+                else:
+                    smap = (batch['gt_cell'][..., 0] / 2 * batch['inp'].shape[-1]).unsqueeze(1)
+                    logits_fake = self.disc(torch.cat([batch['pred'], smap], dim=1))
+
+                gan_g_loss = -torch.mean(logits_fake)
+                gan_g_loss_w = self.loss_cfg.get('gan_g_loss', 1)
+                ret['gan_g_loss'] = gan_g_loss.item()
+
+                if self.training and self.loss_cfg.adaptive_gan_weight:
+                    nll_loss = l1_loss * l1_loss_w + perc_loss * perc_loss_w
+                    adaptive_g_w = self.calculate_adaptive_g_w(nll_loss, gan_g_loss, self.renderer.get_last_layer_weight())
+                    ret['adaptive_g_w'] = adaptive_g_w.item()
+                    gan_g_loss_w = gan_g_loss_w * adaptive_g_w
+                ret['loss'] = ret['loss'] + gan_g_loss * gan_g_loss_w
+
+            return ret
         
-        # L1 Loss
-        l1_loss = torch.abs(pred - target).mean()
-        l1_loss_w = self.loss_cfg.get('l1_loss', 1)
-        ret['l1_loss'] = l1_loss.item()
-        ret['loss'] = ret['loss'] + l1_loss_w * l1_loss
-        
-        # Perception Loss
-        perc_loss = lpips(pred, target).mean()
-        perc_loss_w = self.loss_cfg.get('perc_loss', 1)
-        ret['perc_loss'] = perc_loss.item()
-        ret['loss'] = ret['loss'] + perc_loss_w * perc_loss
-
-        # GAN Loss
-        if use_gan:
-
+        elif mode == "disc_loss":
             if not self.disc_cond_scale:
-                logits_fake = self.disc(pred)
+                logits_real = self.disc(batch['gt'])
+                logits_fake = self.disc(batch['pred'])
             else:
                 smap = (batch['gt_cell'][..., 0] / 2 * batch['inp'].shape[-1]).unsqueeze(1)
-                logits_fake = self.disc(torch.cat([pred, smap], dim=1))
+                logits_real = self.disc(torch.cat([batch['gt'], smap], dim=1))
+                logits_fake = self.disc(torch.cat([batch['pred'], smap], dim=1))
 
-            gan_g_loss = -torch.mean(logits_fake)
-            gan_g_loss_w = self.loss_cfg.get('gan_g_loss', 1)
-            ret['gan_g_loss'] = gan_g_loss.item()
-            
-            if self.training and self.loss_cfg.adaptive_gan_weight:
-                nll_loss = l1_loss * l1_loss_w + perc_loss * perc_loss_w
-                adaptive_g_w = self.calculate_adaptive_g_w(nll_loss, gan_g_loss, self.renderer.get_last_layer_weight())
-                ret['adaptive_g_w'] = adaptive_g_w.item()
-                gan_g_loss_w = gan_g_loss_w * adaptive_g_w
+            disc_loss_type = self.loss_cfg.get('disc_loss_type', 'hinge')
 
-            ret['loss'] = ret['loss'] + gan_g_loss * gan_g_loss_w
+            if disc_loss_type == 'hinge':
+                loss_real = torch.mean(F.relu(1. - logits_real))
+                loss_fake = torch.mean(F.relu(1. + logits_fake))
+                loss = (loss_real + loss_fake) / 2
+            elif disc_loss_type == 'vanilla':
+                loss_real = torch.mean(F.softplus(-logits_real))
+                loss_fake = torch.mean(F.softplus(logits_fake))
+                loss = (loss_real + loss_fake) / 2
 
-        return ret
+            return {
+                'loss': loss,
+                'disc_logits_real': logits_real.mean().item(),
+                'disc_logits_fake': logits_fake.mean().item(),
+            }
+    
+    def calculate_adaptive_g_w(self, nll_loss, g_loss, last_layer):
+        nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
+        g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
+        world_size = int(os.environ.get('WORLD_SIZE', '1'))
+        if world_size > 1:
+            dist.all_reduce(nll_grads, op=dist.ReduceOp.SUM)
+            nll_grads.div_(world_size)
+            dist.all_reduce(g_grads, op=dist.ReduceOp.SUM)
+            g_grads.div_(world_size)
+        d_weight = torch.norm(nll_grads) / (torch.norm(g_grads) + 1e-4)
+        d_weight = torch.clamp(d_weight, 0.0, 1e4).detach()
+        return d_weight
+    
+
+
+class CustomAutoencoderKL(AutoencoderKL):
+
+    def from_pretrained(self, key):
+        vae = super().from_pretrained(key)
+    
+    
+    
+
