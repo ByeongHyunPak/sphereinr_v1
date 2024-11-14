@@ -54,7 +54,11 @@ class basePipeline(nn.Module):
         if opt is None:
             opt = dict()
         gd = dict()
-        # TODO Fill with components
+        gd['vae.encoder'] = opt.get('vae.encoder', False)
+        gd['vae.decoder'] = opt.get('vae.decoder', False)
+        gd['renderer'] = opt.get('renderer', False)
+        gd['text_encoder'] = opt.get('text_encoder', False)
+        gd['unet'] = opt.get('unet', False)
         return gd
 
     def get_params(self, name):
@@ -62,7 +66,14 @@ class basePipeline(nn.Module):
             return self.vae.parameters()
         elif name == 'renderer':
             return self.renderer.parameters()
-        # TODO Fill with components
+        elif name == "text_encoder":
+            return self.text_encoder.parameters()
+        elif name == "unet":
+            return self.unet.parameters()
+        elif name == "disc":
+            return self.disc.parameters()
+        else:
+            raise NotImplementedError()
 
     def encode_latents(self, x):
         x = x.to(self.vae.dtype)
@@ -184,11 +195,76 @@ class basePipeline(nn.Module):
         return d_weight
     
 
+from typing import Dict, Optional, Tuple, Union
+from diffusers.utils import is_torch_version
+from diffusers.models.autoencoders.vae import DecoderOutput
 
 class CustomAutoencoderKL(AutoencoderKL):
 
     def from_pretrained(self, key):
         vae = super().from_pretrained(key)
+        self.decoder = vae.decoder
+        return self
+    
+    def decode(
+        self, z: torch.FloatTensor, return_dict: bool = True, generator=None
+    ) -> Union[DecoderOutput, torch.FloatTensor]:
+        # custom decode logic, bypassing post-process in the original `_decode` method
+        if self.use_slicing and z.shape[0] > 1:
+            # Using custom decoder logic on slices
+            decoded_slices = [self.custom_decoder_forward(z_slice) for z_slice in z.split(1)]
+            decoded = torch.cat(decoded_slices)
+        else:
+            # Direct call to the custom decoder forward function
+            decoded = self.custom_decoder_forward(z)
+
+        if not return_dict:
+            return (decoded,)
+
+        return DecoderOutput(sample=decoded)
+    
+    def custom_decoder_forward(self, sample: torch.Tensor, latent_embeds: Optional[torch.Tensor] = None) -> torch.Tensor:
+        sample = self.decoder.conv_in(sample)
+        upscale_dtype = next(iter(self.decoder.up_blocks.parameters())).dtype
+
+        if torch.is_grad_enabled() and self.decoder.gradient_checkpointing:
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+                return custom_forward
+
+            if is_torch_version(">=", "1.11.0"):
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.decoder.mid_block),
+                    sample,
+                    latent_embeds,
+                    use_reentrant=False,
+                )
+                sample = sample.to(upscale_dtype)
+
+                for up_block in self.decoder.up_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block),
+                        sample,
+                        latent_embeds,
+                        use_reentrant=False,
+                    )
+            else:
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.decoder.mid_block), sample, latent_embeds
+                )
+                sample = sample.to(upscale_dtype)
+
+                for up_block in self.decoder.up_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
+        else:
+            sample = self.decoder.mid_block(sample, latent_embeds)
+            sample = sample.to(upscale_dtype)
+
+            for up_block in self.decoder.up_blocks:
+                sample = up_block(sample, latent_embeds)
+
+        return sample  # post-process removed here
     
     
     

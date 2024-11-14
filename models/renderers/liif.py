@@ -12,10 +12,13 @@ from models import register
 @register('liif')
 class liif(nn.Module):
 
-    def __init__(self, imnet_spec=None):
+    def __init__(self, conv, imnet_spec=None):
+        self.conv_in = nn.Conv2d(conv.in_channels, conv.out_channels, 3)
         self.imnet = models.make(imnet_spec)
 
     def forward(self, feat, coord, cell=None):
+
+        feat = self.conv_in(feat)
 
         vx_lst = [-1, 1]
         vy_lst = [-1, 1]
