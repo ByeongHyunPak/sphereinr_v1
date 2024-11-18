@@ -1,0 +1,24 @@
+datasets:
+  train:
+    name: odisr-liif
+    args:
+      dataset:
+        name: image_folder
+        args: {root_path: data/odisr/train}
+      lr_inp_size: (512, 1024)
+      hr_tgt_size: (4096, 8192)
+      gt_crop_size: (64, 64)
+      gt_size_min: (1024, 2048)
+      gt_size_max: (4096, 8192)
+
+  val:
+    name: odisr-liif
+    args:
+      dataset:
+        name: image_folder
+        args: {root_path: data/odisr/val}
+      lr_inp_size: (512, 1024)
+      hr_tgt_size: (4096, 8192)
+      gt_crop_size: (64, 64)
+      gt_size_min: (1024, 2048)
+      gt_size_max: (4096, 8192)

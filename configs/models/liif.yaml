@@ -1,0 +1,9 @@
+model:
+  args:
+    renderer:
+      name: liif
+      args:
+        z_dec_channels: 128
+        net:
+          name: simple_renderer_net
+          args: {hidden_channels: 256}

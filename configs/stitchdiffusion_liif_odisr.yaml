@@ -1,0 +1,26 @@
+_base_:
+  - configs/datasets/odisr-liif.yaml
+  - configs/models/stitchdiffusion.yaml
+  - configs/models/liif.yaml
+  - configs/trainers/renderer.yaml
+
+model:
+  name: base_pipeline
+  args:
+    disc: 
+      use_custom: False
+      disc_cond_scale: False
+    loss_cfg:
+      gan_g_loss: 0.75
+      adaptive_gan_weight: False
+
+datasets:
+  train:
+    loader:
+      batch_size: 16
+      num_workers: 16
+  
+  val:
+    loader:
+      batch_size: 16
+      num_workers: 16

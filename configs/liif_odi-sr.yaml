@@ -1,8 +1,0 @@
-_base_:
-  - configs/models/...
-
-
-datasets:
-  train:
-
-  val:

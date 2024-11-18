@@ -1,0 +1,5 @@
+model:
+  args:
+    vae: "path/to/ae"
+    diffuser:
+    
