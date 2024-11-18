@@ -15,3 +15,7 @@ https://github.com/huggingface/diffusers/blob/ebf581e85f3aad7faa30ceb4678148ee87
 https://huggingface.co/docs/diffusers/main/ko/using-diffusers/loading#%EB%A1%9C%EC%BB%AC-%ED%8C%8C%EC%9D%B4%ED%94%84%EB%9D%BC%EC%9D%B8
 git lfs install
 git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
+
+
+
+https://x360dataset.github.io/
