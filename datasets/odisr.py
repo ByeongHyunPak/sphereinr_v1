@@ -20,14 +20,14 @@ def resize_fn(img, size):
 class ODISR_LIIF(Dataset):
 
     def __init__(self,
-                 img_folder,
+                 dataset,
                  lr_inp_size=(512, 1024),
                  hr_tgt_size=(4096, 8192),
                  gt_crop_size=(256, 256),
-                 gt_size_min=(1025, 2048),
+                 gt_size_min=(1024, 2048),
                  gt_size_max=None):
         
-        self.img_folder = datasets.make(img_folder)
+        self.dataset = datasets.make(dataset)
 
         self.lr_inp_size = lr_inp_size
         self.hr_h_tgt = hr_tgt_size[0]
