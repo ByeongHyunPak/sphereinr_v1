@@ -2,4 +2,7 @@ model:
   args:
     vae: "path/to/ae"
     diffuser:
-    
+      text_encoder:
+      tokenizer:
+      scheduler:
+      unet:
