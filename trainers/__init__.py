@@ -1,4 +1,4 @@
 from .trainers import register, trainers_dict
 
-from .base_trainer import BaseTrainer
-from .custom_trainer import CustomTrainer
+from . import base_trainer
+from . import renderer_trainer
