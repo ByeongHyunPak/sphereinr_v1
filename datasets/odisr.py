@@ -76,7 +76,7 @@ class ODISR_LIIF(Dataset):
 
         return {
             'inp': inp,
-            'gt_rgb': crop_gt_img,
+            'gt': crop_gt_img,
             'gt_coord': crop_grid,
             'gt_cell': crop_cell,
         }
