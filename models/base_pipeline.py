@@ -99,11 +99,17 @@ class basePipeline(nn.Module):
         feats = self.decode_latents(latents)
         return feats
 
-    def forward_train(self, batch, mode, **kwargs):
+    def forward(self, batch, mode, **kwargs):
 
-        if mode == "loss":
+        if mode == "pred":
+            with torch.no_grad():
+                feats = self.forward_autoencoder(batch)
+                preds = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
+                return preds
+
+        elif mode == "loss":
             feats = self.forward_autoencoder(batch)
-            batch['pred'] = self.renderer(feats, batch['coord'], batch['cell'])
+            batch['pred'] = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
             ret = self.compute_loss(batch, mode="loss", **kwargs)
             # compute training psnr
             mse = ((batch['gt'] - batch['pred']) / 2).pow(2).mean(dim=[-2, -1])
@@ -112,7 +118,7 @@ class basePipeline(nn.Module):
         elif mode == "disc_loss":
             with torch.no_grad():
                 feats = self.forward_autoencoder(batch)
-                batch['pred'] = self.renderer(feats, batch['coord'], batch['cell'])
+                batch['pred'] = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
             ret = self.compute_loss(batch, mode="disc_loss", **kwargs)
 
         return ret
