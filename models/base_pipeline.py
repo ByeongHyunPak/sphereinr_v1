@@ -15,6 +15,7 @@ from models import register
 from models.vqgan.lpips import lpips
 from models.vqgan.discriminator import make_discriminator
 
+from utils.kohya_trainer.library import model_util
 
 @register('base_pipeline')
 class basePipeline(nn.Module):
@@ -29,7 +30,7 @@ class basePipeline(nn.Module):
             **kwargs
         ):
 
-        self.vae = CustomAutoencoderKL.from_pretrained(vae)
+        self.vae = model_util.load_vae(vae, dtype=torch.float16)
 
         input_nc = 3 if not disc.disc_cond_scale else 4
         self.disc_cond_scale = disc.disc_cond_scale
@@ -38,12 +39,13 @@ class basePipeline(nn.Module):
         self.renderer = models.make(renderer) if renderer else None
 
         if diffuser is not None: # TODO
-            self.text_encoder = CLIPTextModel.from_pretrained(diffuser.text_encoder)
-            self.tokenizer = CLIPTokenizer.from_pretrained(diffuser.tokenizer)
-            self.scheduler = DDIMScheduler.from_pretrained(diffuser.scheduler)
-            self.unet = UNet2DConditionModel.from_pretrained(diffuser.unet)
-            if diffuser.get('lora', False):
-                self.add_lora(self.unet)
+            pass
+            # self.text_encoder = CLIPTextModel.from_pretrained(diffuser.text_encoder)
+            # self.tokenizer = CLIPTokenizer.from_pretrained(diffuser.tokenizer)
+            # self.scheduler = DDIMScheduler.from_pretrained(diffuser.scheduler)
+            # self.unet = UNet2DConditionModel.from_pretrained(diffuser.unet)
+            # if diffuser.get('lora', False):
+            #     self.add_lora(self.unet)
 
         self.loss_cfg = loss_cfg
     
@@ -99,17 +101,11 @@ class basePipeline(nn.Module):
         feats = self.decode_latents(latents)
         return feats
 
-    def forward(self, batch, mode, **kwargs):
+    def forward_train(self, batch, mode, **kwargs):
 
-        if mode == "pred":
-            with torch.no_grad():
-                feats = self.forward_autoencoder(batch)
-                preds = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
-                return preds
-
-        elif mode == "loss":
+        if mode == "loss":
             feats = self.forward_autoencoder(batch)
-            batch['pred'] = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
+            batch['pred'] = self.renderer(feats, batch['coord'], batch['cell'])
             ret = self.compute_loss(batch, mode="loss", **kwargs)
             # compute training psnr
             mse = ((batch['gt'] - batch['pred']) / 2).pow(2).mean(dim=[-2, -1])
@@ -118,7 +114,7 @@ class basePipeline(nn.Module):
         elif mode == "disc_loss":
             with torch.no_grad():
                 feats = self.forward_autoencoder(batch)
-                batch['pred'] = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
+                batch['pred'] = self.renderer(feats, batch['coord'], batch['cell'])
             ret = self.compute_loss(batch, mode="disc_loss", **kwargs)
 
         return ret
