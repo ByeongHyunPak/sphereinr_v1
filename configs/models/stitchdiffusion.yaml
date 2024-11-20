@@ -1,6 +1,6 @@
 model:
   args:
-    vae: "path/to/ae"
+    vae: "load/stablediffusion.vae.pt"
     diffuser:
       text_encoder:
       tokenizer:
