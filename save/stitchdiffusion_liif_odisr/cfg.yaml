@@ -1,0 +1,90 @@
+datasets:
+  train:
+    name: odisr-liif
+    args:
+      dataset:
+        name: image_folder
+        args:
+          root_path: ../data/lau_dataset/odisr/training/HR
+      lr_inp_size: (512, 1024)
+      hr_tgt_size: (4096, 8192)
+      gt_crop_size: (64, 64)
+      gt_size_min: (1024, 2048)
+      gt_size_max: (4096, 8192)
+    loader:
+      batch_size: 16
+      num_workers: 16
+  val:
+    name: odisr-liif
+    args:
+      dataset:
+        name: image_folder
+        args:
+          root_path: ../data/lau_dataset/odisr/validation/HR
+      lr_inp_size: (512, 1024)
+      hr_tgt_size: (4096, 8192)
+      gt_crop_size: (64, 64)
+      gt_size_min: (1024, 2048)
+      gt_size_max: (4096, 8192)
+    loader:
+      batch_size: 16
+      num_workers: 16
+model:
+  args:
+    vae: load/stablediffusion.vae.pt
+    diffuser:
+      text_encoder: null
+      tokenizer: null
+      scheduler: null
+      unet: null
+    renderer:
+      name: liif
+      args:
+        z_dec_channels: 128
+        net:
+          name: simple_renderer_net
+          args:
+            hidden_channels: 256
+    disc:
+      use_custom: false
+      disc_cond_scale: false
+    loss_cfg:
+      gan_g_loss: 0.75
+      adaptive_gan_weight: false
+  name: base_pipeline
+trainer: renderer_trainer
+max_iter: 1000000
+epoch_iter: 10000
+eval_iter: 50000
+save_iter: 200000
+vis_iter: 100000
+ckpt_select_metric:
+  name: perc_loss
+  type: min
+optimizers:
+  renderer:
+    name: adam
+    args:
+      lr: 3.6e-05
+      betas:
+      - 0.5
+      - 0.9
+  disc:
+    name: adam
+    args:
+      lr: 3.6e-05
+      betas:
+      - 0.5
+      - 0.9
+gan_start_after_iters: 0
+find_unused_parameters: true
+visualize:
+  resolution: 256
+  ds_samples: 16
+  ae_center_zoom_res: 1024
+random_seed: null
+_env:
+  exp_name: stitchdiffusion_liif_odisr
+  save_dir: save/stitchdiffusion_liif_odisr
+  wandb: false
+  resume_mode: replace
