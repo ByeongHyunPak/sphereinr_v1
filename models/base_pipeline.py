@@ -30,11 +30,13 @@ class basePipeline(nn.Module):
             **kwargs
         ):
 
+        super().__init__()
+
         self.vae = model_util.load_vae(vae, dtype=torch.float16)
 
         input_nc = 3 if not disc.disc_cond_scale else 4
         self.disc_cond_scale = disc.disc_cond_scale
-        self.disc = make_discriminator(**disc, input_nc=input_nc) if disc else None
+        self.disc = make_discriminator(use_custom=disc.use_custom, input_nc=input_nc) if disc else None
 
         self.renderer = models.make(renderer) if renderer else None
 

@@ -9,7 +9,7 @@ ckpt_select_metric:
   name: perc_loss
   type: min
 
-optimizer:
+optimizers:
   renderer:
     name: adam
     args: {lr: 3.6e-5, betas: [0.5, 0.9]}

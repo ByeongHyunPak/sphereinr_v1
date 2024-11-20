@@ -1,1 +1,1 @@
-from .liif import liif
+from . import liif
