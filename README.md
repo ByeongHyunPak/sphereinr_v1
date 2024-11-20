@@ -19,3 +19,6 @@ git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 
 
 https://x360dataset.github.io/
+
+
+CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 --standalone run.py --cfg configs/stitchdiffusion_liif_odisr.yaml

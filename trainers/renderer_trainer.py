@@ -40,7 +40,7 @@ class RendererTrainer(BaseTrainer):
             self.vis_resolution = (self.vis_resolution, self.vis_resolution)
         if self.is_master:
             random.seed(0) # to get a fixed vis set from wrapper_cae
-            self.prepare_visualize()
+            # self.prepare_visualize()
             if self.cfg.random_seed is not None:
                 random.seed(self.cfg.random_seed + self.rank)
             else:

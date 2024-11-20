@@ -4,7 +4,7 @@ datasets:
     args:
       dataset:
         name: image_folder
-        args: {root_path: data/odisr/train}
+        args: {root_path: ../data/lau_dataset/odisr/training/HR}
       lr_inp_size: (512, 1024)
       hr_tgt_size: (4096, 8192)
       gt_crop_size: (64, 64)
@@ -16,7 +16,7 @@ datasets:
     args:
       dataset:
         name: image_folder
-        args: {root_path: data/odisr/val}
+        args: {root_path: ../data/lau_dataset/odisr/validation/HR}
       lr_inp_size: (512, 1024)
       hr_tgt_size: (4096, 8192)
       gt_crop_size: (64, 64)

@@ -3,7 +3,7 @@ stitchdiffusion/**/*.safetensors
 stitchdiffusion/**/*.pt
 *.txt
 *.zip
-
+save/*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
