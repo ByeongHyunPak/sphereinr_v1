@@ -1,6 +1,6 @@
 .DS_Store
-stitchdiffusion/**/*.safetensors
-stitchdiffusion/**/*.pt
+load/**/*.safetensors
+load/**/*.pt
 *.txt
 *.zip
 
