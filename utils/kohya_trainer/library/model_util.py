@@ -465,6 +465,24 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     meta_path = {"old": "mid.attn_1", "new": "mid_block.attentions.0"}
     assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
     conv_attn_to_linear(new_checkpoint)
+
+    #### Add custom ###
+    updated_checkpoint = {}
+    for key, value in new_checkpoint.items():
+        if "attentions.0.query" in key:
+            new_key = key.replace("attentions.0.query", "attentions.0.to_q")
+        elif "attentions.0.key" in key:
+            new_key = key.replace("attentions.0.key", "attentions.0.to_k")
+        elif "attentions.0.value" in key:
+            new_key = key.replace("attentions.0.value", "attentions.0.to_v")
+        elif "attentions.0.proj_attn" in key:
+            new_key = key.replace("attentions.0.proj_attn", "attentions.0.to_out.0")
+        else:
+            new_key = key
+        updated_checkpoint[new_key] = value
+    new_checkpoint = updated_checkpoint
+    ###################
+
     return new_checkpoint
 
 

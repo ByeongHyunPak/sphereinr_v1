@@ -91,7 +91,7 @@ class BaseTrainer():
         torch.cuda.set_device(self.rank)
         self.device = torch.device('cuda', torch.cuda.current_device())
 
-        dist.barrier()
+        # dist.barrier()
         
         self.log(f'Environment setup done.')
 

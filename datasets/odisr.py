@@ -27,7 +27,7 @@ class ODISR_LIIF(Dataset):
                  gt_size_min=(1024, 2048),
                  gt_size_max=None):
         
-        self.dataset = datasets.make(dataset)
+        self.img_folder = datasets.make(dataset)
 
         self.lr_inp_size = lr_inp_size
         self.hr_h_tgt = hr_tgt_size[0]
