@@ -17,10 +17,10 @@ model:
 datasets:
   train:
     loader:
-      batch_size: 16
-      num_workers: 16
+      batch_size: 1
+      num_workers: 4
   
   val:
     loader:
-      batch_size: 16
-      num_workers: 16
+      batch_size: 1
+      num_workers: 4

@@ -1091,16 +1091,19 @@ def save_diffusers_checkpoint(v2, output_dir, text_encoder, unet, pretrained_mod
 VAE_PREFIX = "first_stage_model."
 
 
-def load_vae(vae_id, dtype):
+def load_vae(vae_id, dtype, vae_class=None):
+
+    vae_class = AutoencoderKL if vae_class is None else vae_class
+
     print(f"load VAE: {vae_id}")
     if os.path.isdir(vae_id) or not os.path.isfile(vae_id):
         # Diffusers local/remote
         try:
-            vae = AutoencoderKL.from_pretrained(vae_id, subfolder=None, torch_dtype=dtype)
+            vae = vae_class.from_pretrained(vae_id, subfolder=None, torch_dtype=dtype)
         except EnvironmentError as e:
             print(f"exception occurs in loading vae: {e}")
             print("retry with subfolder='vae'")
-            vae = AutoencoderKL.from_pretrained(vae_id, subfolder="vae", torch_dtype=dtype)
+            vae = vae_class.from_pretrained(vae_id, subfolder="vae", torch_dtype=dtype)
         return vae
 
     # local
@@ -1130,9 +1133,53 @@ def load_vae(vae_id, dtype):
         # Convert the VAE model.
         converted_vae_checkpoint = convert_ldm_vae_checkpoint(vae_sd, vae_config)
 
-    vae = AutoencoderKL(**vae_config)
+    vae = vae_class(**vae_config)
     vae.load_state_dict(converted_vae_checkpoint)
     return vae
+
+
+# def load_vae(vae_id, dtype):
+#     print(f"load VAE: {vae_id}")
+#     if os.path.isdir(vae_id) or not os.path.isfile(vae_id):
+#         # Diffusers local/remote
+#         try:
+#             vae = AutoencoderKL.from_pretrained(vae_id, subfolder=None, torch_dtype=dtype)
+#         except EnvironmentError as e:
+#             print(f"exception occurs in loading vae: {e}")
+#             print("retry with subfolder='vae'")
+#             vae = AutoencoderKL.from_pretrained(vae_id, subfolder="vae", torch_dtype=dtype)
+#         return vae
+
+#     # local
+#     vae_config = create_vae_diffusers_config()
+
+#     if vae_id.endswith(".bin"):
+#         # SD 1.5 VAE on Huggingface
+#         converted_vae_checkpoint = torch.load(vae_id, map_location="cuda")
+#     else:
+#         # StableDiffusion
+#         vae_model = load_file(vae_id, "cuda") if is_safetensors(vae_id) else torch.load(vae_id, map_location="cpu")
+#         vae_sd = vae_model["state_dict"] if "state_dict" in vae_model else vae_model
+
+#         # vae only or full model
+#         full_model = False
+#         for vae_key in vae_sd:
+#             if vae_key.startswith(VAE_PREFIX):
+#                 full_model = True
+#                 break
+#         if not full_model:
+#             sd = {}
+#             for key, value in vae_sd.items():
+#                 sd[VAE_PREFIX + key] = value
+#             vae_sd = sd
+#             del sd
+
+#         # Convert the VAE model.
+#         converted_vae_checkpoint = convert_ldm_vae_checkpoint(vae_sd, vae_config)
+
+#     vae = AutoencoderKL(**vae_config)
+#     vae.load_state_dict(converted_vae_checkpoint)
+#     return vae
 
 
 # endregion

@@ -45,18 +45,20 @@ class ODISR_LIIF(Dataset):
         img = self.img_folder[idx]
 
         # pre-upsampling hr image
-        if img.size(-1) < self.hr_h_tgt:
+        if img.size[-1] < self.hr_h_tgt:
             size = (self.hr_h_tgt, 2* self.hr_h_tgt)
             img = resize_fn(img, size)
 
         # lr input image
         inp = resize_fn(img, self.lr_inp_size)
+        inp = transforms.ToTensor()(inp)
 
         # hr gt patch
         if self.gt_h_max is None:
-            self.gt_h_max = img.size(-1)
+            self.gt_h_max = img.size[-1]
         gt_h = random.randint(self.gt_h_min, self.gt_h_max)
         gt_img = resize_fn(img, (gt_h, 2 * gt_h))
+        gt_img = transforms.ToTensor()(gt_img)
 
         # ERP grid (naive regular grid - liif)
         grid = make_coord_grid(gt_img.shape[-2:]) # (h, w, 2)
@@ -67,12 +69,12 @@ class ODISR_LIIF(Dataset):
         cell[:, :, 1] *= 2 / gt_img.shape[-1]
 
         # random crop gt_img and corresponding coord and cell
-        cs = self.gt_crop_size
+        cs = self.gt_crop_size[0]
         i0 = random.randint(0, gt_img.shape[-2] - cs)
         j0 = random.randint(0, gt_img.shape[-1] - cs)
-        crop_gt_img = gt_img[:, i0:i0+cs, j0:j0+cs].view(3, -1).permute(1, 0) # (cs*cs, 3)
-        crop_grid = grid[i0:i0+cs, j0:j0+cs, :].view(-1, 2) # (cs*cs, 2)
-        crop_cell = cell[i0:i0+cs, j0:j0+cs, :].view(-1, 2) # (cs*cs, 2)
+        crop_gt_img = gt_img[:, i0:i0+cs, j0:j0+cs] # (3, cs, cs)
+        crop_grid = grid[i0:i0+cs, j0:j0+cs, :] # (cs, cs, 2)
+        crop_cell = cell[i0:i0+cs, j0:j0+cs, :] # (cs, cs, 2)
 
         return {
             'inp': inp,

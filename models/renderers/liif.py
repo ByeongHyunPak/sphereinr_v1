@@ -37,6 +37,8 @@ class LIIF(nn.Module):
             rel_coord = convert_posenc(rel_coord, self.co_pe_dim, self.co_pe_w_max)
         if self.ce_pe_dim is not None:
             rel_cell = convert_posenc(rel_cell, self.ce_pe_dim, self.ce_pe_w_max)
+        # print(q_feat.shape, rel_coord.shape, rel_cell.shape) 
+        # torch.Size([1, 64, 64, 128]) torch.Size([1, 64, 64, 2]) torch.Size([1, 64, 64, 2])
         layout = torch.cat([q_feat, rel_coord, rel_cell], dim=-1).permute(0, 3, 1, 2)
         return self.net(layout)
 
