@@ -72,9 +72,9 @@ class ODISR_LIIF(Dataset):
         cs = self.gt_crop_size[0]
         i0 = random.randint(0, gt_img.shape[-2] - cs)
         j0 = random.randint(0, gt_img.shape[-1] - cs)
-        crop_gt_img = gt_img[:, i0:i0+cs, j0:j0+cs].reshape(3, -1).permute(1, 0) # (cs*cs, 3)
-        crop_grid = grid[i0:i0+cs, j0:j0+cs, :].reshape(-1, 2) # (cs*cs, 2)
-        crop_cell = cell[i0:i0+cs, j0:j0+cs, :].reshape(-1, 2) # (cs*cs, 2)
+        crop_gt_img = gt_img[:, i0:i0+cs, j0:j0+cs] # (3, cs, cs)
+        crop_grid = grid[i0:i0+cs, j0:j0+cs, :] # (cs, cs, 2)
+        crop_cell = cell[i0:i0+cs, j0:j0+cs, :] # (cs, cs, 2)
 
         return {
             'inp': inp,

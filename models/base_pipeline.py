@@ -12,7 +12,7 @@ from diffusers.loaders import AttnProcsLayers
 
 import models
 from models import register
-from models.vqgan.lpips import lpips
+from models.vqgan.lpips import LPIPS
 from models.vqgan.discriminator import make_discriminator
 
 from utils.kohya_trainer.library import model_util
@@ -32,7 +32,7 @@ class basePipeline(nn.Module):
 
         super().__init__()
 
-        self.vae = model_util.load_vae(vae, dtype=torch.float16)
+        self.vae = model_util.load_vae(vae, dtype=torch.float16, vae_class=CustomAutoencoderKL)
 
         input_nc = 3 if not disc.disc_cond_scale else 4
         self.disc_cond_scale = disc.disc_cond_scale
@@ -50,6 +50,7 @@ class basePipeline(nn.Module):
             #     self.add_lora(self.unet)
 
         self.loss_cfg = loss_cfg
+        self.perc_loss = LPIPS().eval()
     
     def add_lora(self, unet):
         pass # TODO
@@ -83,13 +84,13 @@ class basePipeline(nn.Module):
         x = x.to(self.vae.dtype)
         z = self.vae.encode(x).latent_dist.sample()
         z = z * self.vae.config.scaling_factor
-        return z.to(self.dtype)
+        return z #.to(self.dtype)
 
     def decode_latents(self, z):
         z = 1 / self.vae.config.scaling_factor * z
         z = z.to(self.vae.dtype)
         feat = self.vae.decode(z).sample
-        return feat.to(self.dtype)
+        return feat #.to(self.dtype)
 
     def rotate_latents(self, z, degree=None):
         if degree is None:
@@ -103,11 +104,11 @@ class basePipeline(nn.Module):
         feats = self.decode_latents(latents)
         return feats
 
-    def forward_train(self, batch, mode, **kwargs):
+    def forward(self, batch, mode, **kwargs):
 
         if mode == "loss":
             feats = self.forward_autoencoder(batch)
-            batch['pred'] = self.renderer(feats, batch['coord'], batch['cell'])
+            batch['pred'] = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
             ret = self.compute_loss(batch, mode="loss", **kwargs)
             # compute training psnr
             mse = ((batch['gt'] - batch['pred']) / 2).pow(2).mean(dim=[-2, -1])
@@ -116,7 +117,7 @@ class basePipeline(nn.Module):
         elif mode == "disc_loss":
             with torch.no_grad():
                 feats = self.forward_autoencoder(batch)
-                batch['pred'] = self.renderer(feats, batch['coord'], batch['cell'])
+                batch['pred'] = self.renderer(feats, batch['gt_coord'], batch['gt_cell'])
             ret = self.compute_loss(batch, mode="disc_loss", **kwargs)
 
         return ret
@@ -127,13 +128,13 @@ class basePipeline(nn.Module):
             ret = {'loss': torch.tensor(0, dtype=torch.float32, device=batch['inp'].device)}
             
             # L1 Loss
-            l1_loss = torch.abs(batch['pred'] - batch['target']).mean()
+            l1_loss = torch.abs(batch['pred'] - batch['gt']).mean()
             l1_loss_w = self.loss_cfg.get('l1_loss', 1)
             ret['l1_loss'] = l1_loss.item()
             ret['loss'] = ret['loss'] + l1_loss_w * l1_loss
             
             # Perception Loss
-            perc_loss = lpips(batch['pred'], batch['target']).mean()
+            perc_loss = self.perc_loss(batch['pred'], batch['gt']).mean()
             perc_loss_w = self.loss_cfg.get('perc_loss', 1)
             ret['perc_loss'] = perc_loss.item()
             ret['loss'] = ret['loss'] + perc_loss_w * perc_loss

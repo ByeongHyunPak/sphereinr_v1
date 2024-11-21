@@ -93,7 +93,7 @@ class RendererTrainer(BaseTrainer):
         pass
 
     def run_training(self):
-        pass
+        super().run_training()
 
     def visualize(self):
         self.model_ddp.eval()
