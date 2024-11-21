@@ -300,7 +300,8 @@ class BaseTrainer():
                     ave_scalars[k].add(v, n=bs)
 
                 if self.is_master:
-                    pbar.set_description(desc=f'train: loss={ret["loss"]:.4f}')
+                    pbar.set_description(
+                        desc=f'train: loss={ret["loss"]:.4f} | psnr={ret["psnr"]:.4f}')
 
             self.sync_ave_scalars_(ave_scalars)
 

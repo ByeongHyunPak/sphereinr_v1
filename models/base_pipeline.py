@@ -32,11 +32,7 @@ class basePipeline(nn.Module):
 
         super().__init__()
 
-<<<<<<< HEAD
-        self.vae = model_util.load_vae(vae, dtype=torch.float16)
-=======
         self.vae = model_util.load_vae(vae, dtype=torch.float16, vae_class=CustomAutoencoderKL)
->>>>>>> origin/master
 
         input_nc = 3 if not disc.disc_cond_scale else 4
         self.disc_cond_scale = disc.disc_cond_scale
@@ -104,9 +100,10 @@ class basePipeline(nn.Module):
         return torch.roll(z, degree // 360 * z.shape[-1], dims=-1)
     
     def forward_autoencoder(self, batch):
-        latents = self.encode_latents(batch['inp'])
-        feats = self.decode_latents(latents)
-        return feats
+        with torch.no_grad():
+            latents = self.encode_latents(batch['inp'])
+            feats = self.decode_latents(latents)
+        return feats.detach()
 
     def forward(self, batch, mode, **kwargs):
 
