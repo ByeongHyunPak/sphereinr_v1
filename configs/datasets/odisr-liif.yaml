@@ -7,7 +7,7 @@ datasets:
         args: {root_path: ../data/lau_dataset/odisr/training/HR}
       lr_inp_size: [512, 1024]
       hr_tgt_size: [2048, 4096]
-      gt_crop_size: [64, 64]
+      gt_crop_size: [48, 48]
       gt_size_min: [1024, 2048]
       gt_size_max: [2048, 4096]
 
@@ -19,6 +19,6 @@ datasets:
         args: {root_path: ../data/lau_dataset/odisr/validation/HR}
       lr_inp_size: [512, 1024]
       hr_tgt_size: [2048, 4096]
-      gt_crop_size: [64, 64]
+      gt_crop_size: [48, 48]
       gt_size_min: [1024, 2048]
       gt_size_max: [2048, 4096]
